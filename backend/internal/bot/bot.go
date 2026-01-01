@@ -2,67 +2,44 @@ package bot
 
 import "emitrr_assignment/backend/internal/game"
 
-// DecideMove returns the column number the bot should play
+// DecideMove → bot wins if possible, else blocks, else center, else first valid
 func DecideMove(g *game.Game, botSymbol rune, playerSymbol rune) int {
 
-	// 1 If bot can win in this move → WIN
+	// 1 Try to WIN
 	for col := 0; col < game.Columns; col++ {
-		if canPlay(g, col) && isWinningMove(g, col, botSymbol) {
-			return col
+		if g.CanPlay(col) {
+			clone := g.Clone()
+			clone.ApplyMove(col)
+			if clone.Winner == botSymbol {
+				return col
+			}
 		}
 	}
 
-	// 2 If player can win next move → BLOCK
+	// 2 BLOCK opponent win
 	for col := 0; col < game.Columns; col++ {
-		if canPlay(g, col) && isWinningMove(g, col, playerSymbol) {
-			return col
+		if g.CanPlay(col) {
+			clone := g.Clone()
+			clone.Turn = playerSymbol
+			clone.ApplyMove(col)
+			if clone.Winner == playerSymbol {
+				return col
+			}
 		}
 	}
 
-	// 3 Play center if possible
+	// 3 Play center
 	center := game.Columns / 2
-	if canPlay(g, center) {
+	if g.CanPlay(center) {
 		return center
 	}
 
-	// 4 Play first valid column
+	// 4 First valid column
 	for col := 0; col < game.Columns; col++ {
-		if canPlay(g, col) {
+		if g.CanPlay(col) {
 			return col
 		}
 	}
 
-	return -1 // should never happen
-}
-
-// --------------------
-// Helper Functions
-// --------------------
-
-func canPlay(g *game.Game, column int) bool {
-	return g.Board[column][0] == game.Empty
-}
-
-func isWinningMove(g *game.Game, column int, symbol rune) bool {
-	clone := cloneGame(g)
-	clone.CurrentTurn = symbol
-	_, err := clone.DropDisc(column)
-	return err == nil && clone.Status == game.Finished
-}
-
-func cloneGame(g *game.Game) *game.Game {
-	boardCopy := make([][]rune, game.Columns)
-	for c := 0; c < game.Columns; c++ {
-		boardCopy[c] = make([]rune, game.Rows)
-		copy(boardCopy[c], g.Board[c])
-	}
-
-	return &game.Game{
-		ID:          g.ID,
-		Board:       boardCopy,
-		Players:     g.Players,
-		CurrentTurn: g.CurrentTurn,
-		Status:      g.Status,
-		Winner:      nil,
-	}
+	return -1
 }

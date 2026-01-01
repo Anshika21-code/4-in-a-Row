@@ -1,148 +1,127 @@
 package game
 
-import "errors"
 
 const (
 	Rows    = 6
 	Columns = 7
-	Empty   = '.'
 )
 
-type GameStatus string
-
-const (
-	Waiting    GameStatus = "WAITING"
-	InProgress GameStatus = "IN_PROGRESS"
-	Finished   GameStatus = "FINISHED"
-)
-
-type Game struct {
-	Board      [][]rune
-	CurrentTurn rune
-	Status     GameStatus
-	Winner     rune
+type Player struct {
+	ID       string
+	Username string
+	Symbol   rune // 'X' or 'O'
 }
 
-// --------------------
-// Game Initialization
-// --------------------
+type Game struct {
+	Board   [][]rune
+	Player1 *Player
+	Player2 *Player
+	Turn    rune
+	Winner  rune // 'X', 'O', or 0 (no winner yet)
+}
 
-func NewGame() *Game {
-	board := make([][]rune, Columns)
-	for c := 0; c < Columns; c++ {
-		board[c] = make([]rune, Rows)
-		for r := 0; r < Rows; r++ {
-			board[c][r] = Empty
-		}
+func NewGame(id string, p1 *Player) *Game {
+	board := make([][]rune, Rows)
+	for i := range board {
+		board[i] = make([]rune, Columns)
 	}
 
 	return &Game{
-		Board:       board,
-		CurrentTurn: 'X',
-		Status:      InProgress,
-		Winner:      Empty,
+		Board:   board,
+		Player1: p1,
+		Turn:    p1.Symbol,
+		Winner:  0,
 	}
 }
 
-// --------------------
-// Drop Disc Logic
-// --------------------
+func (g *Game) AddSecondPlayer(p2 *Player) {
+	g.Player2 = p2
+}
 
-func (g *Game) DropDisc(column int) (int, error) {
-	if g.Status != InProgress {
-		return -1, errors.New("game is not active")
-	}
+func (g *Game) CanPlay(col int) bool {
+	return col >= 0 && col < Columns && g.Board[0][col] == 0
+}
 
-	if column < 0 || column >= Columns {
-		return -1, errors.New("invalid column")
+func (g *Game) ApplyMove(col int) bool {
+	if !g.CanPlay(col) || g.Winner != 0 {
+		return false
 	}
 
 	for row := Rows - 1; row >= 0; row-- {
-		if g.Board[column][row] == Empty {
-			g.Board[column][row] = g.CurrentTurn
-
-			if g.checkWin(column, row) {
-				g.Status = Finished
-				g.Winner = g.CurrentTurn
-			} else if g.isDraw() {
-				g.Status = Finished
-				g.Winner = Empty
-			} else {
-				g.switchTurn()
-			}
-
-			return row, nil
+		if g.Board[row][col] == 0 {
+			g.Board[row][col] = g.Turn
+			break
 		}
 	}
 
-	return -1, errors.New("column is full")
-}
+	if g.checkWinner(g.Turn) {
+		g.Winner = g.Turn
+		return true
+	}
 
-// --------------------
-// Turn Handling
-// --------------------
-
-func (g *Game) switchTurn() {
-	if g.CurrentTurn == 'X' {
-		g.CurrentTurn = 'O'
+	// switch turn
+	if g.Turn == g.Player1.Symbol {
+		g.Turn = g.Player2.Symbol
 	} else {
-		g.CurrentTurn = 'X'
+		g.Turn = g.Player1.Symbol
 	}
+
+	return true
 }
 
-// --------------------
-// Win Detection
-// --------------------
-
-func (g *Game) checkWin(col, row int) bool {
-	directions := [][2]int{
-		{1, 0},  // Horizontal
-		{0, 1},  // Vertical
-		{1, 1},  // Diagonal \
-		{1, -1}, // Diagonal /
+func (g *Game) checkWinner(sym rune) bool {
+	dirs := [][]int{
+		{0, 1}, {1, 0}, {1, 1}, {1, -1},
 	}
 
-	for _, d := range directions {
-		count := 1
-		count += g.countDirection(col, row, d[0], d[1])
-		count += g.countDirection(col, row, -d[0], -d[1])
-
-		if count >= 4 {
-			return true
+	for r := 0; r < Rows; r++ {
+		for c := 0; c < Columns; c++ {
+			if g.Board[r][c] != sym {
+				continue
+			}
+			for _, d := range dirs {
+				count := 1
+				for k := 1; k < 4; k++ {
+					nr := r + d[0]*k
+					nc := c + d[1]*k
+					if nr < 0 || nr >= Rows || nc < 0 || nc >= Columns {
+						break
+					}
+					if g.Board[nr][nc] != sym {
+						break
+					}
+					count++
+				}
+				if count == 4 {
+					return true
+				}
+			}
 		}
 	}
-
 	return false
 }
 
-func (g *Game) countDirection(col, row, dc, dr int) int {
-	count := 0
-	symbol := g.CurrentTurn
-
-	c := col + dc
-	r := row + dr
-
-	for c >= 0 && c < Columns && r >= 0 && r < Rows {
-		if g.Board[c][r] != symbol {
-			break
-		}
-		count++
-		c += dc
-		r += dr
+func (g *Game) Clone() *Game {
+	board := make([][]rune, Rows)
+	for i := range board {
+		board[i] = make([]rune, Columns)
+		copy(board[i], g.Board[i])
 	}
 
-	return count
+	return &Game{
+		Board:   board,
+		Player1: g.Player1,
+		Player2: g.Player2,
+		Turn:    g.Turn,
+		Winner:  g.Winner,
+	}
 }
 
-// --------------------
-// Draw Detection
-// --------------------
-
-func (g *Game) isDraw() bool {
-	for c := 0; c < Columns; c++ {
-		if g.Board[c][0] == Empty {
+func (g *Game) IsDraw() bool {
+	for col := 0; col < Columns; col++ {
+		if g.CanPlay(col) {
 			return false
 		}
 	}
-	return true
+	return g.Winner == 0
 }
