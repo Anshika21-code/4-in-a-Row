@@ -1,35 +1,49 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState, useEffect } from "react"
+import JoinScreen from "./components/JoinScreen"
+import GameScreen from "./components/GameScreen"
+import { useWebSocket } from "./hooks/useWebSocket"
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [gameState, setGameState] = useState(null)
 
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+  const send = useWebSocket((data) => {
+    setGameState(data)
+
+    localStorage.setItem("gameID", data.gameID)
+    localStorage.setItem("playerID", data.playerID)
+
+    if (data.message) {
+      setTimeout(() => {
+        setGameState(prev => ({ ...prev, message: null }))
+      }, 3000)
+    }
+  })
+
+  //  Auto reconnect
+  useEffect(() => {
+    const gameID = localStorage.getItem("gameID")
+    const playerID = localStorage.getItem("playerID")
+
+    if (gameID && playerID) {
+      send({ type: "reconnect", gameID, playerID })
+    }
+  }, [])
+
+  //  JOIN FLOW
+  if (!gameState) {
+    return (
+      <JoinScreen
+        onJoin={({ username, gameId, mode }) =>
+          send({
+            type: "join",
+            username,
+            gameID: gameId || null,
+            mode,
+          })
+        }
+      />
+    )
+  }
+
+  return <GameScreen state={gameState} send={send} />
 }
-
-export default App
