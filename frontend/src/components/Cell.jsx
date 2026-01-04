@@ -1,7 +1,12 @@
-export default function Cell({ value }) {
-  let className = "cell"
-  if (value === "X") className += " red drop"
-  if (value === "O") className += " yellow drop"
+export default function Cell({ value, falling }) {
+  let display = ""
 
-  return <div className={className}></div>
+  if (value === 88) display = "X"
+  if (value === 79) display = "O"
+
+  return (
+    <div className={`cell ${display ? "filled" : ""} ${falling ? "drop" : ""}`}>
+      {display}
+    </div>
+  )
 }

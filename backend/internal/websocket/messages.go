@@ -1,18 +1,18 @@
 package websocket
 
 type ClientMessage struct {
-	Type     string `json:"type"` // join | move | reconnect
-	GameID   string `json:"gameId,omitempty"`
-	PlayerID string `json:"playerId,omitempty"`
-	Username string `json:"username,omitempty"`
-	Column   int    `json:"column,omitempty"`
+	Type     string `json:"type"`
+	Username string `json:"username"`
+	GameID   string `json:"gameId"`
+	Column   int    `json:"column"`
+	Mode     string `json:"mode"` // "human" | "bot"
 }
 
 type ServerMessage struct {
-	Type       string        `json:"type"`
-	GameID     string        `json:"gameId,omitempty"`
-	PlayerID   string        `json:"playerId,omitempty"`
-	Board      [][]rune      `json:"board,omitempty"`
-	YourSymbol rune          `json:"yourSymbol,omitempty"`
-	Winner     string        `json:"winner,omitempty"`
+	Type       string   `json:"type"`
+	GameID     string   `json:"gameId"`
+	PlayerID   string   `json:"playerId"`
+	Board      [][]rune `json:"board"`
+	YourSymbol rune     `json:"yourSymbol"`
+	Winner     string   `json:"winner"`
 }

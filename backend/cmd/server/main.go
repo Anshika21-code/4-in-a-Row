@@ -10,7 +10,6 @@ import (
 func main() {
 	http.HandleFunc("/ws", ws.HandleWS)
 
-
-	log.Println("WebSocket server running on :8080")
+	log.Println(" WebSocket server running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

@@ -1,9 +1,20 @@
-import { useState } from "react"
+import { useState } from "react";
 
 export default function JoinScreen({ onJoin }) {
-  const [username, setUsername] = useState("")
-  const [gameId, setGameId] = useState("")
-  const [mode, setMode] = useState("human") // human | bot
+  const [username, setUsername] = useState("");
+  const [gameId, setGameId] = useState("");
+  const [mode, setMode] = useState("human"); // human | bot
+
+  const handleJoin = () => {
+    if (!username.trim()) return;
+
+    onJoin({
+      type: "join",
+      username: username.trim(),
+      gameId: gameId.trim(),
+      mode
+    });
+  };
 
   return (
     <div className="center">
@@ -12,21 +23,20 @@ export default function JoinScreen({ onJoin }) {
       <input
         placeholder="Username"
         value={username}
-        onChange={e => setUsername(e.target.value)}
+        onChange={(e) => setUsername(e.target.value)}
       />
 
       <input
         placeholder="Game ID (optional)"
         value={gameId}
-        onChange={e => setGameId(e.target.value)}
+        onChange={(e) => setGameId(e.target.value)}
       />
 
-      {/*  MODE SELECT */}
       <div>
         <label>
           <input
             type="radio"
-            value="human"
+            name="mode"
             checked={mode === "human"}
             onChange={() => setMode("human")}
           />
@@ -36,20 +46,17 @@ export default function JoinScreen({ onJoin }) {
         <label>
           <input
             type="radio"
-            value="bot"
+            name="mode"
             checked={mode === "bot"}
             onChange={() => setMode("bot")}
           />
-          Play vs Bot 
+          Play vs Bot
         </label>
       </div>
 
-      <button
-        onClick={() => onJoin({ username, gameId, mode })}
-        disabled={!username}
-      >
+      <button onClick={handleJoin} disabled={!username.trim()}>
         Create / Join
       </button>
     </div>
-  )
+  );
 }

@@ -1,19 +1,18 @@
 package websocket
 
 import (
-	"sync"
 	"time"
 
 	"emitrr_assignment/backend/internal/game"
+
 	"github.com/gorilla/websocket"
 )
 
 type Session struct {
+	GameID   string
 	Game     *game.Game
-	Players  map[string]*websocket.Conn // playerId -> conn
+	Players  map[string]*websocket.Conn
 	LastSeen map[string]time.Time
-	Mutex    sync.Mutex
 }
 
-var Sessions = map[string]*Session{}
-var SessionsMu sync.Mutex
+var Sessions = make(map[string]*Session)
