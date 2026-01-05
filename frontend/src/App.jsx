@@ -1,47 +1,47 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import useWebSocket from "./hooks/useWebSocket";
 import JoinScreen from "./components/JoinScreen";
 import GameScreen from "./components/GameScreen";
-import useWebSocket from "./hooks/useWebSocket";
 
 export default function App() {
-  const [gameState, setGameState] = useState(null);
+  const [state, setState] = useState(null);
 
-  // ✅ single message handler
-  const onMessage = (data) => {
-    setGameState(data);
+  const wsRef = useWebSocket((data) => {
+    console.log("WS MESSAGE RAW:", data);
 
-    if (data.gameID && data.playerID) {
-      localStorage.setItem("gameID", data.gameID);
-      localStorage.setItem("playerID", data.playerID);
+    if (data.type === "state") {
+      // 🔥 MAP backend → frontend format
+      const mappedBoard = data.board.map(row =>
+        row.map(cell => {
+          if (cell === 88) return "X";
+          if (cell === 79) return "O";
+          return null;
+        })
+      );
+
+      setState({
+        gameID: data.gameId,
+        yourSymbol: data.yourSymbol === 88 ? "X" : "O",
+        game: {
+          board: mappedBoard,
+          winner: data.winner,
+          currentTurn: data.yourSymbol === 88 ? "X" : "O",
+        },
+      });
     }
+  });
 
-    if (data.message) {
-      setTimeout(() => {
-        setGameState((prev) => ({ ...prev, message: null }));
-      }, 3000);
+  const send = (msg) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(msg));
     }
   };
 
-  // ✅ ONLY ONE websocket
-  const wsRef = useWebSocket(onMessage);
-
-  // ✅ JOIN
-  const handleJoin = (payload) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      console.log("WS not ready");
-      return;
-    }
-
-    wsRef.current.send(JSON.stringify(payload));
-    console.log("✅ join sent", payload);
+  const handleJoin = ({ username, mode }) => {
+    send({ type: "join", username, mode });
   };
 
-  // ❌ Remove reconnect for now (backend doesn't handle it yet)
-  // useEffect(() => {}, []);
+  if (!state) return <JoinScreen onJoin={handleJoin} />;
 
-  if (!gameState) {
-    return <JoinScreen onJoin={handleJoin} />;
-  }
-
-  return <GameScreen state={gameState} send={handleJoin} />;
+  return <GameScreen state={state} send={send} />;
 }

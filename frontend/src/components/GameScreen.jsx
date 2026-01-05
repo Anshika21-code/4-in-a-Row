@@ -1,37 +1,40 @@
-import Board from "./Board"
+import Board from "./Board.jsx";
 
 export default function GameScreen({ state, send }) {
-  if (!state || !state.board || state.board.length === 0) {
-    return <p>Waiting for game to start...</p>
+  //  jab tak websocket state nahi aati
+  if (!state || !state.game) {
+    return <div>Loading game...</div>;
   }
 
-  // ✅ FIXED TURN LOGIC
-  const isYourTurn =
-    state.winner === "continue" && state.yourSymbol === 88
+  const { game, yourSymbol, gameID } = state;
 
-  const handleMove = (col) => {
-    if (!isYourTurn) return
-
-    send({
-      type: "move",
-      column: col
-    })
-  }
+  const isMyTurn =
+    game.winner === "continue" &&
+    yourSymbol === game.currentTurn;
 
   return (
-    <div>
-      <h3>Game ID: {state.gameID}</h3>
-      <p>You are: {state.yourSymbol === 88 ? "X" : "O"}</p>
+    <div className="game-container">
+      <h3>Game ID: {gameID}</h3>
+      <p>You are: {yourSymbol}</p>
 
       <Board
-        board={state.board}
-        onMove={handleMove}
-        disabled={!isYourTurn}
+        board={game.board}
+        disabled={!isMyTurn}
+        onMove={(col) =>
+          send({
+            type: "move",
+            column: col,
+          })
+        }
       />
 
-      {state.winner && state.winner !== "continue" && (
-        <h2>{state.winner}</h2>
+      {!isMyTurn && game.winner === "continue" && (
+        <p> Waiting for opponent...</p>
+      )}
+
+      {game.winner !== "continue" && (
+        <h2>{game.winner}</h2>
       )}
     </div>
-  )
+  );
 }

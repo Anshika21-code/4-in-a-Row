@@ -1,12 +1,8 @@
-export default function Cell({ value, falling }) {
-  let display = ""
-
-  if (value === 88) display = "X"
-  if (value === 79) display = "O"
-
+export default function Cell({ value }) {
   return (
-    <div className={`cell ${display ? "filled" : ""} ${falling ? "drop" : ""}`}>
-      {display}
+    <div className="cell">
+      {value === "X" && <div className="disc blue" />}
+      {value === "O" && <div className="disc red" />}
     </div>
-  )
+  );
 }

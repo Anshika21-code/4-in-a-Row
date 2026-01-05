@@ -1,29 +1,30 @@
-import Cell from "./Cell"
+import Cell from "./Cell";
+import "../styles/index.css";
 
 export default function Board({ board, onMove, disabled }) {
   if (!board || board.length === 0) {
-    return <p>Waiting for game to start...</p>
+    return <p>Waiting for game to start...</p>;
   }
 
-  const rows = board.length
-  const cols = board[0].length
+  const rows = board.length;
+  const cols = board[0].length;
 
   return (
     <div className="board">
-      {Array.from({ length: cols }).map((_, colIndex) => (
+      {Array.from({ length: cols }).map((_, col) => (
         <div
-          key={colIndex}
-          className="column"
-          onClick={() => !disabled && onMove(colIndex)}
+          key={col}
+          className={`column ${!disabled ? "clickable" : ""}`}
+          onClick={() => !disabled && onMove(col)}
         >
-          {Array.from({ length: rows }).map((_, rowIndex) => (
-            <Cell
-              key={rowIndex}
-              value={board[rowIndex][colIndex]}
-            />
-          ))}
+          {/* 🔥 IMPORTANT: render rows bottom → top */}
+          {Array.from({ length: rows })
+            .map((_, row) => rows - 1 - row)
+            .map((row) => (
+              <Cell key={row} value={board[row][col]} />
+            ))}
         </div>
       ))}
     </div>
-  )
+  );
 }
