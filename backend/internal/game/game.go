@@ -1,6 +1,5 @@
 package game
 
-
 const (
 	Rows    = 6
 	Columns = 7
@@ -43,18 +42,26 @@ func (g *Game) CanPlay(col int) bool {
 }
 
 func (g *Game) ApplyMove(col int) bool {
-	if !g.CanPlay(col) || g.Winner != 0 {
+	if g.Winner != 0 || !g.CanPlay(col) {
+		return false
+	}
+	if g.Player1 == nil || g.Player2 == nil {
 		return false
 	}
 
+	placedRow := -1
 	for row := Rows - 1; row >= 0; row-- {
 		if g.Board[row][col] == 0 {
 			g.Board[row][col] = g.Turn
+			placedRow = row
 			break
 		}
 	}
+	if placedRow == -1 {
+		return false
+	}
 
-	if g.checkWinner(g.Turn) {
+	if g.checkWinnerFrom(placedRow, col, g.Turn) {
 		g.Winner = g.Turn
 		return true
 	}
@@ -69,36 +76,36 @@ func (g *Game) ApplyMove(col int) bool {
 	return true
 }
 
-func (g *Game) checkWinner(sym rune) bool {
-	dirs := [][]int{
-		{0, 1}, {1, 0}, {1, 1}, {1, -1},
+func (g *Game) checkWinnerFrom(r, c int, sym rune) bool {
+	if r < 0 || r >= Rows || c < 0 || c >= Columns {
+		return false
+	}
+	if g.Board[r][c] != sym {
+		return false
 	}
 
-	for r := 0; r < Rows; r++ {
-		for c := 0; c < Columns; c++ {
-			if g.Board[r][c] != sym {
-				continue
-			}
-			for _, d := range dirs {
-				count := 1
-				for k := 1; k < 4; k++ {
-					nr := r + d[0]*k
-					nc := c + d[1]*k
-					if nr < 0 || nr >= Rows || nc < 0 || nc >= Columns {
-						break
-					}
-					if g.Board[nr][nc] != sym {
-						break
-					}
-					count++
-				}
-				if count == 4 {
-					return true
-				}
-			}
+	dirs := [][2]int{{0, 1}, {1, 0}, {1, 1}, {1, -1}}
+	for _, d := range dirs {
+		total := 1
+		total += g.countDir(r, c, d[0], d[1], sym)
+		total += g.countDir(r, c, -d[0], -d[1], sym)
+		if total >= 4 {
+			return true
 		}
 	}
 	return false
+}
+
+func (g *Game) countDir(r, c, dr, dc int, sym rune) int {
+	count := 0
+	r += dr
+	c += dc
+	for r >= 0 && r < Rows && c >= 0 && c < Columns && g.Board[r][c] == sym {
+		count++
+		r += dr
+		c += dc
+	}
+	return count
 }
 
 func (g *Game) Clone() *Game {

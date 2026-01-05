@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"emitrr_assignment/backend/internal/bot"
-	"emitrr_assignment/backend/internal/engine"
 	"emitrr_assignment/backend/internal/game"
 
 	"github.com/google/uuid"
@@ -33,78 +32,162 @@ func handleConnection(conn *websocket.Conn) {
 
 		// ================= JOIN =================
 		case "join":
-			gameID, playerID, board, symbol := handleJoin(conn, msg)
+			gameID, playerID, _, _ := handleJoin(conn, msg)
 
 			currentGameID = gameID
 			currentPlayerID = playerID
 
-			log.Printf(
-				"Player joined - GameID: %s, PlayerID: %s, Mode: %s",
-				gameID, playerID, msg.Mode,
-			)
+			log.Printf("Player joined - GameID: %s, PlayerID: %s, Mode: %s", gameID, playerID, msg.Mode)
 
-			sendState(
-				conn,
-				gameID,
-				currentPlayerID,
-				board,
-				symbol,
-				"continue",
-			)
+			session := Sessions[currentGameID]
+			if session == nil {
+				log.Println("JOIN ERROR: session not found after create")
+				continue
+			}
+
+			sendState(conn, session, currentPlayerID, "continue", "joined_ok")
 
 		// ================= MOVE =================
 		case "move":
-	log.Printf("🎮 Player move request: column %d", msg.Column)
+			if currentGameID == "" || currentPlayerID == "" {
+				log.Println("MOVE ERROR: player not joined yet")
+				continue
+			}
 
-	session := Sessions[currentGameID]
-	if session == nil {
-		log.Println("Session not found")
-		continue
-	}
+			session := Sessions[currentGameID]
+			if session == nil {
+				log.Println("MOVE ERROR: session not found:", currentGameID)
+				continue
+			}
 
-	// ❌ Game already won
-	if session.Game.Winner != 0 {
-		log.Println("❌ Game already finished")
-		continue
-	}
+			// choose column from either field
+			col := msg.Col
+			if col == 0 && msg.Column != 0 {
+				col = msg.Column
+			}
+			// Note: col==0 is valid column; so we must distinguish between "not provided"
+			// vs "provided as 0". If both fields are 0, it's still valid (col=0).
+			// We'll validate by range anyway.
 
-	// ❌ Bot still thinking → IGNORE SPAM
-	if session.BotBusy {
-		log.Println("⏳ Bot busy, ignoring move")
-		continue
-	}
+			session.Mu.Lock()
+			deferUnlock := true
+			defer func() {
+				if deferUnlock {
+					session.Mu.Unlock()
+				}
+			}()
 
-	// 🔒 LOCK BOT
-	session.BotBusy = true
+			// Validate player exists
+			if session.Game.Player1 == nil {
+				sendState(conn, session, currentPlayerID, "invalid_move", "server_error: player1 missing")
+				continue
+			}
+			if session.Game.Player2 == nil {
+				sendState(conn, session, currentPlayerID, "invalid_move", "server_error: player2 missing (bot not added?)")
+				continue
+			}
 
-	// ✅ PLAYER MOVE
-	result := engine.PlayTurn(session.Game, msg.Column)
-	log.Printf("Player move result: %s", result)
+			// Game over
+			if session.Game.Winner != 0 {
+				sendState(conn, session, currentPlayerID, "invalid_move", "game_already_finished")
+				continue
+			}
 
-	broadcastState(currentGameID, result)
+			// Only Player1 (human) can move in bot mode
+			if currentPlayerID != session.Game.Player1.ID {
+				sendState(conn, session, currentPlayerID, "invalid_move", "not_allowed: only player1 can move vs bot")
+				continue
+			}
 
-	// ❌ If player won, unlock and stop
-	if result != "continue" {
-		session.BotBusy = false
-		continue
-	}
+			// Bot busy guard (prevents spam clicks while bot is moving)
+			if session.BotBusy {
+				sendState(conn, session, currentPlayerID, "invalid_move", "bot_busy_wait")
+				continue
+			}
 
-	// 🤖 BOT MOVE (ASYNC)
-	go func(gameID string) {
-		log.Println("🤖 Bot thinking...")
-		time.Sleep(700 * time.Millisecond)
+			// Turn check
+			if session.Game.Turn != session.Game.Player1.Symbol {
+				sendState(conn, session, currentPlayerID, "invalid_move", "not_your_turn")
+				continue
+			}
 
-		col := bot.DecideMove(session.Game, 'O', 'X')
-		botResult := engine.PlayTurn(session.Game, col)
+			// Column validity
+			if col < 0 || col >= game.Columns {
+				sendState(conn, session, currentPlayerID, "invalid_move", "invalid_column_out_of_range")
+				continue
+			}
+			if !session.Game.CanPlay(col) {
+				sendState(conn, session, currentPlayerID, "invalid_move", "invalid_column_full")
+				continue
+			}
 
-		log.Printf(
-			"🤖 Bot placed disc in column %d, result: %s",
-			col, botResult,
-		)
+			// Apply HUMAN move
+			ok := session.Game.ApplyMove(col)
+			if !ok {
+				sendState(conn, session, currentPlayerID, "invalid_move", "apply_move_failed")
+				continue
+			}
 
-		session.BotBusy = false
-		broadcastState(gameID, botResult)
-	}(currentGameID)
+			// Broadcast after human move
+			if session.Game.Winner != 0 {
+				deferUnlock = false
+				session.Mu.Unlock()
+				broadcastState(session, "human_won", "human_won")
+				continue
+			}
+			if session.Game.IsDraw() {
+				deferUnlock = false
+				session.Mu.Unlock()
+				broadcastState(session, "draw", "draw")
+				continue
+			}
+
+			// Now BOT turn
+			session.BotBusy = true
+			deferUnlock = false
+			session.Mu.Unlock()
+
+			// Optional small delay for UX
+			time.Sleep(500 * time.Millisecond)
+
+			session.Mu.Lock()
+			// decide bot column using actual symbols
+			botCol := bot.DecideMove(session.Game, session.Game.Player2.Symbol, session.Game.Player1.Symbol)
+			if botCol < 0 {
+				session.BotBusy = false
+				session.Mu.Unlock()
+				broadcastState(session, "draw", "bot_no_moves")
+				continue
+			}
+
+			// Ensure it's bot's turn (should be, after human move)
+			if session.Game.Turn != session.Game.Player2.Symbol {
+				session.BotBusy = false
+				session.Mu.Unlock()
+				broadcastState(session, "invalid_move", "server_error: expected bot turn but turn mismatch")
+				continue
+			}
+
+			_ = session.Game.ApplyMove(botCol)
+
+			session.BotBusy = false
+
+			// Compute result
+			status := "continue"
+			msgText := "continue"
+			if session.Game.Winner != 0 {
+				status = "bot_won"
+				msgText = "bot_won"
+			} else if session.Game.IsDraw() {
+				status = "draw"
+				msgText = "draw"
+			}
+
+			session.Mu.Unlock()
+			broadcastState(session, status, msgText)
+
+		default:
+			log.Printf("Unknown message type: %s", msg.Type)
 		}
 	}
 }
@@ -148,7 +231,7 @@ func handleJoin(conn *websocket.Conn, msg ClientMessage) (string, string, [][]ru
 			Username: "Bot",
 			Symbol:   'O',
 		}
-		g.Player2 = botPlayer
+		g.AddSecondPlayer(botPlayer)
 	}
 
 	return gameID, playerID, g.Board, symbol
@@ -156,49 +239,37 @@ func handleJoin(conn *websocket.Conn, msg ClientMessage) (string, string, [][]ru
 
 // ================= STATE BROADCAST =================
 
-func broadcastState(gameID string, result string) {
-	session := Sessions[gameID]
-	if session == nil {
-		return
-	}
-
+func broadcastState(session *Session, status string, message string) {
 	for pid, conn := range session.Players {
-		var symbol rune
-
-		if session.Game.Player1 != nil && session.Game.Player1.ID == pid {
-			symbol = session.Game.Player1.Symbol
-		} else if session.Game.Player2 != nil && session.Game.Player2.ID == pid {
-			symbol = session.Game.Player2.Symbol
-		} else {
-			symbol = 'X'
-		}
-
-		sendState(conn, gameID, pid, session.Game.Board, symbol, result)
+		sendState(conn, session, pid, status, message)
 	}
 }
 
 // ================= SEND STATE =================
 
-func sendState(
-	conn *websocket.Conn,
-	gameID string,
-	playerID string,
-	board [][]rune,
-	symbol rune,
-	result string,
-) {
+func sendState(conn *websocket.Conn, session *Session, playerID string, status string, message string) {
+	var symbol rune = 'X'
+	if session.Game.Player1 != nil && session.Game.Player1.ID == playerID {
+		symbol = session.Game.Player1.Symbol
+	} else if session.Game.Player2 != nil && session.Game.Player2.ID == playerID {
+		symbol = session.Game.Player2.Symbol
+	}
+
 	state := ServerMessage{
-		Type:       "state",
-		GameID:     gameID,
-		PlayerID:   playerID,
-		Board:      board,
-		YourSymbol: symbol,
-		Winner:     result,
+		Type:        "state",
+		GameID:      session.GameID,
+		PlayerID:    playerID,
+		Board:       session.Game.Board,
+		YourSymbol:  symbol,
+		CurrentTurn: session.Game.Turn,
+		Winner:      session.Game.Winner,
+		Status:      status,
+		Message:     message,
 	}
 
 	if err := conn.WriteJSON(state); err != nil {
-		log.Printf("Error sending state: %v", err)
+		log.Printf("Error sending state to player %s: %v", playerID, err)
 	} else {
-		log.Printf("State sent to player %s", playerID)
+		log.Printf("State sent to player %s (status=%s message=%s)", playerID, status, message)
 	}
 }

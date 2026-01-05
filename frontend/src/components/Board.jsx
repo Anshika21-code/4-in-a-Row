@@ -1,13 +1,13 @@
-import Cell from "./Cell"
-import "../styles/index.css"
+import Cell from "./Cell";
+import "../styles/index.css";
 
 export default function Board({ board, onMove, disabled }) {
   if (!board || board.length === 0) {
-    return <p>Waiting for game to start...</p>
+    return <p>Waiting for game to start...</p>;
   }
 
-  const rows = board.length
-  const cols = board[0].length
+  const rows = board.length;      // 6
+  const cols = board[0].length;   // 7
 
   return (
     <div className="board">
@@ -15,16 +15,19 @@ export default function Board({ board, onMove, disabled }) {
         <div
           key={col}
           className={`column ${!disabled ? "clickable" : ""}`}
-          onClick={() => !disabled && onMove(col)}
+          onClick={() => {
+            if (disabled) return;
+            onMove(col);
+          }}
         >
           {Array.from({ length: rows }).map((_, row) => (
             <Cell
               key={row}
-              value={board[rows - 1 - row][col]}  
+              value={board[row][col]}   // IMPORTANT: no row reversal
             />
           ))}
         </div>
       ))}
     </div>
-  )
+  );
 }
