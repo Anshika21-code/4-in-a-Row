@@ -134,17 +134,20 @@
   border-radius: 10px;
   width: fit-content;
 }
-
 .column {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  gap: 6px;
 }
 
-.column.clickable {
+.column-click-area {
+  height: 20px;
   cursor: pointer;
 }
+
+.column-click-area.clickable:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
 
 .cell {
   width: 60px;

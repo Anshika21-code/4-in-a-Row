@@ -1,7 +1,7 @@
 import Board from "./Board.jsx";
 
 export default function GameScreen({ state, send }) {
-  //  jab tak websocket state nahi aati
+  // 🛑 jab tak websocket state nahi aati
   if (!state || !state.game) {
     return <div>Loading game...</div>;
   }
@@ -29,7 +29,7 @@ export default function GameScreen({ state, send }) {
       />
 
       {!isMyTurn && game.winner === "continue" && (
-        <p> Waiting for opponent...</p>
+        <p>⏳ Waiting for opponent...</p>
       )}
 
       {game.winner !== "continue" && (

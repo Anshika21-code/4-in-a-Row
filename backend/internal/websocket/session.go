@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"emitrr_assignment/backend/internal/game"
-
 	"github.com/gorilla/websocket"
 )
 
@@ -13,6 +12,8 @@ type Session struct {
 	Game     *game.Game
 	Players  map[string]*websocket.Conn
 	LastSeen map[string]time.Time
+
+	BotBusy bool
 }
 
 var Sessions = make(map[string]*Session)

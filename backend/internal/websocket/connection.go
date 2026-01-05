@@ -18,12 +18,12 @@ func handleConnection(conn *websocket.Conn) {
 	var currentGameID string
 	var currentPlayerID string
 
-	log.Println(" New connection established")
+	log.Println("New connection established")
 
 	for {
 		var msg ClientMessage
 		if err := conn.ReadJSON(&msg); err != nil {
-			log.Println(" Error reading message:", err)
+			log.Println("Error reading message:", err)
 			return
 		}
 
@@ -31,15 +31,18 @@ func handleConnection(conn *websocket.Conn) {
 
 		switch msg.Type {
 
+		// ================= JOIN =================
 		case "join":
 			gameID, playerID, board, symbol := handleJoin(conn, msg)
 
 			currentGameID = gameID
 			currentPlayerID = playerID
 
-			log.Printf(" Player joined - GameID: %s, PlayerID: %s, Mode: %s", gameID, playerID, msg.Mode)
+			log.Printf(
+				"Player joined - GameID: %s, PlayerID: %s, Mode: %s",
+				gameID, playerID, msg.Mode,
+			)
 
-			// Send initial state to the player
 			sendState(
 				conn,
 				gameID,
@@ -49,60 +52,66 @@ func handleConnection(conn *websocket.Conn) {
 				"continue",
 			)
 
-			// If bot mode, bot makes first move
-			session := Sessions[gameID]
-			if session != nil && session.Game.Player2 != nil && session.Game.Player2.ID == "BOT" {
-				log.Println(" Bot making first move...")
-				time.Sleep(500 * time.Millisecond) // Small delay for better UX
-				
-				col := bot.DecideMove(session.Game, 'O', 'X')
-				result := engine.PlayTurn(session.Game, col)
-				
-				log.Printf(" Bot placed disc in column %d, result: %s", col, result)
-				
-				sendState(
-					conn,
-					gameID,
-					currentPlayerID,
-					session.Game.Board,
-					symbol,
-					result,
-				)
-			}
-
+		// ================= MOVE =================
 		case "move":
-			log.Printf("🎮 Player move - Column: %d", msg.Column)
-			
-			session := Sessions[currentGameID]
-			if session == nil {
-				log.Println(" Session not found")
-				return
-			}
+	log.Printf("🎮 Player move request: column %d", msg.Column)
 
-			// Player's move
-			result := engine.PlayTurn(session.Game, msg.Column)
-			log.Printf(" Player move result: %s", result)
-			
-			broadcastState(currentGameID, result)
+	session := Sessions[currentGameID]
+	if session == nil {
+		log.Println("Session not found")
+		continue
+	}
 
-			// Bot's turn (only if game is still continuing and it's bot mode)
-			if session.Game.Player2 != nil && session.Game.Player2.ID == "BOT" && result == "continue" {
-				log.Println("🤖 Bot's turn...")
-				time.Sleep(500 * time.Millisecond) // Delay for realism
-				
-				col := bot.DecideMove(session.Game, 'O', 'X')
-				botResult := engine.PlayTurn(session.Game, col)
-				
-				log.Printf("🤖 Bot placed disc in column %d, result: %s", col, botResult)
-				
-				broadcastState(currentGameID, botResult)
-			}
+	// ❌ Game already won
+	if session.Game.Winner != 0 {
+		log.Println("❌ Game already finished")
+		continue
+	}
+
+	// ❌ Bot still thinking → IGNORE SPAM
+	if session.BotBusy {
+		log.Println("⏳ Bot busy, ignoring move")
+		continue
+	}
+
+	// 🔒 LOCK BOT
+	session.BotBusy = true
+
+	// ✅ PLAYER MOVE
+	result := engine.PlayTurn(session.Game, msg.Column)
+	log.Printf("Player move result: %s", result)
+
+	broadcastState(currentGameID, result)
+
+	// ❌ If player won, unlock and stop
+	if result != "continue" {
+		session.BotBusy = false
+		continue
+	}
+
+	// 🤖 BOT MOVE (ASYNC)
+	go func(gameID string) {
+		log.Println("🤖 Bot thinking...")
+		time.Sleep(700 * time.Millisecond)
+
+		col := bot.DecideMove(session.Game, 'O', 'X')
+		botResult := engine.PlayTurn(session.Game, col)
+
+		log.Printf(
+			"🤖 Bot placed disc in column %d, result: %s",
+			col, botResult,
+		)
+
+		session.BotBusy = false
+		broadcastState(gameID, botResult)
+	}(currentGameID)
 		}
 	}
 }
 
-func handleJoin(conn *websocket.Conn, msg ClientMessage) (string, string, [][]rune, rune) {
+// ================= JOIN HANDLER =================
 
+func handleJoin(conn *websocket.Conn, msg ClientMessage) (string, string, [][]rune, rune) {
 	gameID := msg.GameID
 	if gameID == "" {
 		gameID = uuid.New().String()
@@ -124,13 +133,14 @@ func handleJoin(conn *websocket.Conn, msg ClientMessage) (string, string, [][]ru
 		Game:     g,
 		Players:  make(map[string]*websocket.Conn),
 		LastSeen: make(map[string]time.Time),
+		BotBusy:  false,
 	}
 
 	session.Players[playerID] = conn
 	session.LastSeen[playerID] = time.Now()
 	Sessions[gameID] = session
 
-	// Bot mode - add bot as Player2
+	// Bot mode
 	if msg.Mode == "bot" {
 		log.Println("🤖 Adding bot to game")
 		botPlayer := &game.Player{
@@ -144,6 +154,8 @@ func handleJoin(conn *websocket.Conn, msg ClientMessage) (string, string, [][]ru
 	return gameID, playerID, g.Board, symbol
 }
 
+// ================= STATE BROADCAST =================
+
 func broadcastState(gameID string, result string) {
 	session := Sessions[gameID]
 	if session == nil {
@@ -152,6 +164,7 @@ func broadcastState(gameID string, result string) {
 
 	for pid, conn := range session.Players {
 		var symbol rune
+
 		if session.Game.Player1 != nil && session.Game.Player1.ID == pid {
 			symbol = session.Game.Player1.Symbol
 		} else if session.Game.Player2 != nil && session.Game.Player2.ID == pid {
@@ -163,6 +176,8 @@ func broadcastState(gameID string, result string) {
 		sendState(conn, gameID, pid, session.Game.Board, symbol, result)
 	}
 }
+
+// ================= SEND STATE =================
 
 func sendState(
 	conn *websocket.Conn,
@@ -180,10 +195,10 @@ func sendState(
 		YourSymbol: symbol,
 		Winner:     result,
 	}
-	
+
 	if err := conn.WriteJSON(state); err != nil {
-		log.Printf(" Error sending state: %v", err)
+		log.Printf("Error sending state: %v", err)
 	} else {
-		log.Printf(" State sent to player %s", playerID)
+		log.Printf("State sent to player %s", playerID)
 	}
 }
