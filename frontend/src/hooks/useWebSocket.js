@@ -9,10 +9,14 @@ export default function useWebSocket(onMessage) {
   }, [onMessage]);
 
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8080/ws");
+    // Use environment variable for WebSocket URL
+    // In production, this will use the Render backend URL
+    // In development, it falls back to localhost
+    const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8080";
+    const ws = new WebSocket(`${wsUrl}/ws`);
     wsRef.current = ws;
 
-    ws.onopen = () => console.log("WebSocket connected");
+    ws.onopen = () => console.log("WebSocket connected to:", wsUrl);
 
     ws.onmessage = (event) => {
       const raw = event.data;
